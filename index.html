@@ -3,12 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Jump Runner Game - Lucky Block & Buff System</title>
+    <title>Jump Runner - Free Movement Edition</title>
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
         }
 
         body, html {
@@ -84,6 +86,65 @@
             transition: width 0.1s linear;
         }
 
+        /* VIRTUAL CONTROLS UNTUK HP */
+        #touch-controls {
+            position: absolute;
+            bottom: 20px;
+            left: 0;
+            width: 100%;
+            height: 150px;
+            pointer-events: none;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 25px;
+            z-index: 15;
+        }
+
+        #joystick-zone {
+            width: 120px;
+            height: 120px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 3px solid rgba(255, 255, 255, 0.5);
+            border-radius: 50%;
+            position: relative;
+            pointer-events: auto;
+            touch-action: none;
+        }
+
+        #joystick-stick {
+            width: 50px;
+            height: 50px;
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 50%;
+            position: absolute;
+            top: 32px;
+            left: 32px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.3);
+        }
+
+        #jump-btn {
+            width: 85px;
+            height: 85px;
+            background: rgba(46, 213, 115, 0.8);
+            border: 4px solid #ffffff;
+            border-radius: 50%;
+            color: white;
+            font-weight: bold;
+            font-size: 16px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            pointer-events: auto;
+            touch-action: none;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+        }
+
+        #jump-btn:active {
+            background: rgba(38, 175, 95, 0.9);
+            transform: scale(0.95);
+        }
+
         #game-over-screen {
             position: absolute;
             top: 0;
@@ -147,6 +208,14 @@
 
     <div id="buff-container"></div>
 
+    <!-- TOUCH CONTROLS -->
+    <div id="touch-controls">
+        <div id="joystick-zone">
+            <div id="joystick-stick"></div>
+        </div>
+        <div id="jump-btn">JUMP</div>
+    </div>
+
     <canvas id="gameCanvas"></canvas>
 
     <div id="game-over-screen">
@@ -164,15 +233,11 @@
         const gameOverScreen = document.getElementById('game-over-screen');
         const finalScoreText = document.getElementById('final-score');
 
-        // --- SISTEM SUARA (WEB AUDIO API) ---
+        // Audio System
         let audioCtx;
         function initAudio() {
-            if (!audioCtx) {
-                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            }
-            if (audioCtx.state === 'suspended') {
-                audioCtx.resume();
-            }
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
         }
 
         function playJumpSound() {
@@ -180,19 +245,13 @@
             const now = audioCtx.currentTime;
             const osc = audioCtx.createOscillator();
             const gain = audioCtx.createGain();
-
             osc.type = 'sine';
             osc.frequency.setValueAtTime(220, now);
             osc.frequency.exponentialRampToValueAtTime(880, now + 0.12);
-
             gain.gain.setValueAtTime(0.3, now);
             gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
-
-            osc.connect(gain);
-            gain.connect(audioCtx.destination);
-
-            osc.start(now);
-            osc.stop(now + 0.15);
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(now); osc.stop(now + 0.15);
         }
 
         function playBuffSound() {
@@ -200,19 +259,13 @@
             const now = audioCtx.currentTime;
             const osc = audioCtx.createOscillator();
             const gain = audioCtx.createGain();
-
             osc.type = 'triangle';
             osc.frequency.setValueAtTime(400, now);
             osc.frequency.exponentialRampToValueAtTime(1200, now + 0.2);
-
             gain.gain.setValueAtTime(0.4, now);
             gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
-
-            osc.connect(gain);
-            gain.connect(audioCtx.destination);
-
-            osc.start(now);
-            osc.stop(now + 0.25);
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(now); osc.stop(now + 0.25);
         }
 
         function playDashSound() {
@@ -220,66 +273,65 @@
             const now = audioCtx.currentTime;
             const osc = audioCtx.createOscillator();
             const gain = audioCtx.createGain();
-
             osc.type = 'sawtooth';
             osc.frequency.setValueAtTime(150, now);
             osc.frequency.linearRampToValueAtTime(600, now + 0.3);
-
             gain.gain.setValueAtTime(0.3, now);
             gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
-
-            osc.connect(gain);
-            gain.connect(audioCtx.destination);
-
-            osc.start(now);
-            osc.stop(now + 0.35);
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(now); osc.stop(now + 0.35);
         }
 
         function playGameOverSound() {
             if (!audioCtx) return;
             const now = audioCtx.currentTime;
-            const notes = [400, 350, 300, 220, 150];
-            notes.forEach((freq, i) => {
+            [400, 350, 300, 220, 150].forEach((freq, i) => {
                 const osc = audioCtx.createOscillator();
                 const gain = audioCtx.createGain();
-
                 osc.type = 'sawtooth';
                 osc.frequency.setValueAtTime(freq, now + i * 0.08);
-
                 gain.gain.setValueAtTime(0.15, now + i * 0.08);
                 gain.gain.exponentialRampToValueAtTime(0.01, now + i * 0.08 + 0.1);
-
-                osc.connect(gain);
-                gain.connect(audioCtx.destination);
-
-                osc.start(now + i * 0.08);
-                osc.stop(now + i * 0.08 + 0.12);
+                osc.connect(gain); gain.connect(audioCtx.destination);
+                osc.start(now + i * 0.08); osc.stop(now + i * 0.08 + 0.12);
             });
         }
 
-        // Parameter Utama
+        // Global Parameters
         let distance = 0;
-        let baseSpeed = 6;
-        let currentSpeed = baseSpeed;
         let isGameOver = false;
         let gameStarted = false;
         let groundY;
         let animTimer = 0;
 
-        // Karakter
+        // Player State
         const player = {
-            x: 50,
+            x: 100,
             y: 0,
             width: 32,
             height: 52,
-            dy: 0,
+            normalHeight: 52,
+            crouchHeight: 28,
+            vx: 0,
+            vy: 0,
+            speed: 5.5,
             gravity: 0.65,
             jumpForce: -13,
             isGrounded: true,
+            isCrouching: false,
+            facingRight: true,
             runFrame: 0
         };
 
-        // --- SISTEM BUFF ---
+        // Input Tracking
+        const keys = {
+            up: false,
+            down: false,
+            left: false,
+            right: false
+        };
+
+        // Buff System
         const activeBuffs = {
             dash: { active: false, timer: 0, maxTime: 240, color: '#00d2d3', label: '💨 DASH' },
             fly: { active: false, timer: 0, maxTime: 300, color: '#feca57', label: '🕊️ FLY' },
@@ -288,11 +340,9 @@
 
         let luckyBlocks = [];
         let luckyBlockTimer = 0;
-
         let obstacles = [];
         let spawnTimer = 0;
 
-        // Latar Belakang
         let clouds = [];
         let mountains = [];
 
@@ -304,9 +354,7 @@
         ];
 
         function initBackground() {
-            clouds = [];
-            mountains = [];
-            
+            clouds = []; mountains = [];
             for (let i = 0; i < 5; i++) {
                 clouds.push({
                     x: Math.random() * canvas.width,
@@ -315,7 +363,6 @@
                     speed: Math.random() * 0.5 + 0.2
                 });
             }
-
             for (let i = 0; i < 3; i++) {
                 mountains.push({
                     x: i * (canvas.width / 2) + Math.random() * 100,
@@ -326,166 +373,173 @@
                     yOffset: 40
                 });
             }
-            for (let i = 0; i < 2; i++) {
-                mountains.push({
-                    x: i * canvas.width + Math.random() * 200,
-                    width: canvas.width * 1.1,
-                    height: canvas.height * 0.28,
-                    color: '#2c3e50',
-                    speedFactor: 0.25,
-                    yOffset: 0
-                });
-            }
         }
 
         function resizeCanvas() {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
             groundY = canvas.height - 120;
-            
             if (!gameStarted || isGameOver) {
-                player.x = Math.min(100, canvas.width * 0.15);
                 player.y = groundY - player.height;
             }
-
             initBackground();
         }
         window.addEventListener('resize', resizeCanvas);
         resizeCanvas();
 
-        function handleInput(e) {
-            if (e && e.target && e.target.tagName === 'BUTTON') return; 
-
+        // KEYBOARD CONTROLS (WASD & Panah)
+        window.addEventListener('keydown', (e) => {
             initAudio();
+            if (!gameStarted && !isGameOver) gameStarted = true;
 
-            if (!gameStarted && !isGameOver) {
-                gameStarted = true;
+            if (e.code === 'KeyW' || e.code === 'ArrowUp' || e.code === 'Space') {
+                keys.up = true;
+                doJump();
             }
+            if (e.code === 'KeyS' || e.code === 'ArrowDown') keys.down = true;
+            if (e.code === 'KeyA' || e.code === 'ArrowLeft') keys.left = true;
+            if (e.code === 'KeyD' || e.code === 'ArrowRight') keys.right = true;
+        });
 
-            // Jika buff FLY aktif, ketukan berfungsi sebagai gaya dorong ke atas
+        window.addEventListener('keyup', (e) => {
+            if (e.code === 'KeyW' || e.code === 'ArrowUp' || e.code === 'Space') keys.up = false;
+            if (e.code === 'KeyS' || e.code === 'ArrowDown') keys.down = false;
+            if (e.code === 'KeyA' || e.code === 'ArrowLeft') keys.left = false;
+            if (e.code === 'KeyD' || e.code === 'ArrowRight') keys.right = false;
+        });
+
+        // TOUCH CONTROLS (ANALOG VIRTUAL)
+        const joystickZone = document.getElementById('joystick-zone');
+        const joystickStick = document.getElementById('joystick-stick');
+        const jumpBtn = document.getElementById('jump-btn');
+
+        let joyActive = false;
+        let joyStartX = 0, joyStartY = 0;
+
+        joystickZone.addEventListener('touchstart', (e) => {
+            initAudio();
+            if (!gameStarted && !isGameOver) gameStarted = true;
+            joyActive = true;
+            const touch = e.touches[0];
+            const rect = joystickZone.getBoundingClientRect();
+            joyStartX = rect.left + rect.width / 2;
+            joyStartY = rect.top + rect.height / 2;
+            updateJoystick(touch.clientX, touch.clientY);
+        }, { passive: false });
+
+        window.addEventListener('touchmove', (e) => {
+            if (!joyActive) return;
+            const touch = e.touches[0];
+            updateJoystick(touch.clientX, touch.clientY);
+        }, { passive: false });
+
+        window.addEventListener('touchend', () => {
+            if (!joyActive) return;
+            joyActive = false;
+            joystickStick.style.left = '32px';
+            joystickStick.style.top = '32px';
+            keys.left = false;
+            keys.right = false;
+            keys.down = false;
+        });
+
+        function updateJoystick(clientX, clientY) {
+            const dx = clientX - joyStartX;
+            const dy = clientY - joyStartY;
+            const dist = Math.hypot(dx, dy);
+            const maxDist = 40;
+
+            const angle = Math.atan2(dy, dx);
+            const moveX = Math.cos(angle) * Math.min(dist, maxDist);
+            const moveY = Math.sin(angle) * Math.min(dist, maxDist);
+
+            joystickStick.style.left = `${32 + moveX}px`;
+            joystickStick.style.top = `${32 + moveY}px`;
+
+            keys.left = dx < -15;
+            keys.right = dx > 15;
+            keys.down = dy > 20;
+        }
+
+        jumpBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            initAudio();
+            if (!gameStarted && !isGameOver) gameStarted = true;
+            doJump();
+        });
+
+        function doJump() {
             if (activeBuffs.fly.active) {
-                player.dy = -7;
+                player.vy = -7;
                 playJumpSound();
                 return;
             }
-
             if (player.isGrounded && !isGameOver && gameStarted) {
-                // Modifikasi kekuatan lompatan jika buff JUMP aktif
                 const force = activeBuffs.jump.active ? player.jumpForce * 1.45 : player.jumpForce;
-                player.dy = force;
+                player.vy = force;
                 player.isGrounded = false;
                 playJumpSound();
             }
         }
 
-        window.addEventListener('keydown', (e) => {
-            if (e.code === 'Space' || e.code === 'ArrowUp') handleInput();
-        });
-
-        window.addEventListener('touchstart', (e) => {
-            if (e.target.tagName !== 'BUTTON') e.preventDefault();
-            handleInput(e);
-        }, { passive: false });
-
-        window.addEventListener('mousedown', handleInput);
-
         function getSkyColor(dist) {
             if (dist >= 30000) return { color: skyColors[3].color, label: skyColors[3].label };
-
-            let startNode = skyColors[0];
-            let endNode = skyColors[1];
-
+            let startNode = skyColors[0], endNode = skyColors[1];
             for (let i = 0; i < skyColors.length - 1; i++) {
                 if (dist >= skyColors[i].limit && dist < skyColors[i+1].limit) {
-                    startNode = skyColors[i];
-                    endNode = skyColors[i+1];
-                    break;
+                    startNode = skyColors[i]; endNode = skyColors[i+1]; break;
                 }
             }
-
             const factor = (dist - startNode.limit) / (endNode.limit - startNode.limit);
             const r = Math.round(startNode.color[0] + factor * (endNode.color[0] - startNode.color[0]));
             const g = Math.round(startNode.color[1] + factor * (endNode.color[1] - startNode.color[1]));
             const b = Math.round(startNode.color[2] + factor * (endNode.color[2] - startNode.color[2]));
-
             return { color: [r, g, b], label: startNode.label };
         }
 
-        // SPAWN LUCKY BLOCK
         function generateLuckyBlock() {
             const heights = [groundY - 45, groundY - 95, groundY - 140];
-            const chosenY = heights[Math.floor(Math.random() * heights.length)];
-
             luckyBlocks.push({
                 x: canvas.width + 50,
-                y: chosenY,
-                width: 36,
-                height: 36,
-                bounce: 0
+                y: heights[Math.floor(Math.random() * heights.length)],
+                width: 36, height: 36
             });
         }
 
-        // SPAWN RINTANGAN
         function generateObstacle() {
             const types = ['cactus', 'box', 'bird', 'spike'];
             const chosenType = types[Math.floor(Math.random() * types.length)];
-
-            let obstacle = {
-                x: canvas.width + 50,
-                type: chosenType,
-                width: 30,
-                height: 40,
-                y: groundY - 40
-            };
+            let obstacle = { x: canvas.width + 50, type: chosenType, width: 30, height: 40, y: groundY - 40 };
 
             if (chosenType === 'cactus') {
-                obstacle.width = 30;
-                obstacle.height = Math.random() * 15 + 40;
+                obstacle.width = 30; obstacle.height = Math.random() * 15 + 40;
                 obstacle.y = groundY - obstacle.height;
             } else if (chosenType === 'box') {
-                obstacle.width = 36;
-                obstacle.height = 36;
-                obstacle.y = groundY - 36;
+                obstacle.width = 36; obstacle.height = 36; obstacle.y = groundY - 36;
             } else if (chosenType === 'bird') {
-                obstacle.width = 42;
-                obstacle.height = 26;
-                obstacle.y = groundY - 85; 
+                obstacle.width = 42; obstacle.height = 26; obstacle.y = groundY - 80;
             } else if (chosenType === 'spike') {
-                obstacle.width = 40;
-                obstacle.height = 28;
-                obstacle.y = groundY - 28;
+                obstacle.width = 40; obstacle.height = 28; obstacle.y = groundY - 28;
             }
-
             obstacles.push(obstacle);
         }
 
-        // AKTIFKAN BUFF ACAK
         function triggerRandomBuff() {
             const buffTypes = ['dash', 'fly', 'jump', 'score'];
             const chosen = buffTypes[Math.floor(Math.random() * buffTypes.length)];
-
             if (chosen === 'score') {
-                distance += 500; // Bonus instan
-                playBuffSound();
+                distance += 500; playBuffSound();
             } else if (chosen === 'dash') {
-                activeBuffs.dash.active = true;
-                activeBuffs.dash.timer = activeBuffs.dash.maxTime;
-                playDashSound();
+                activeBuffs.dash.active = true; activeBuffs.dash.timer = activeBuffs.dash.maxTime; playDashSound();
             } else if (chosen === 'fly') {
-                activeBuffs.fly.active = true;
-                activeBuffs.fly.timer = activeBuffs.fly.maxTime;
-                player.dy = -6; // Terbang ke atas saat dapat buff
-                playBuffSound();
+                activeBuffs.fly.active = true; activeBuffs.fly.timer = activeBuffs.fly.maxTime; player.vy = -6; playBuffSound();
             } else if (chosen === 'jump') {
-                activeBuffs.jump.active = true;
-                activeBuffs.jump.timer = activeBuffs.jump.maxTime;
-                playBuffSound();
+                activeBuffs.jump.active = true; activeBuffs.jump.timer = activeBuffs.jump.maxTime; playBuffSound();
             }
         }
 
-        // Deteksi Tabrakan Hitbox
         function checkCollision(p, obs) {
-            const padding = 5;
+            const padding = 4;
             return (
                 p.x + padding < obs.x + obs.width &&
                 p.x + p.width - padding > obs.x &&
@@ -505,9 +559,7 @@
                     badge.style.borderColor = b.color;
                     badge.innerHTML = `
                         <span>${b.label}</span>
-                        <div class="buff-progress">
-                            <div class="buff-bar" style="width: ${pct}%; background: ${b.color};"></div>
-                        </div>
+                        <div class="buff-progress"><div class="buff-bar" style="width: ${pct}%; background: ${b.color};"></div></div>
                     `;
                     buffContainer.appendChild(badge);
                 }
@@ -516,122 +568,116 @@
 
         function update() {
             if (!gameStarted || isGameOver) return;
-
             animTimer++;
 
-            // Update Durasi Buff
-            Object.keys(activeBuffs).forEach(key => {
-                const b = activeBuffs[key];
-                if (b.active) {
-                    b.timer--;
-                    if (b.timer <= 0) {
-                        b.active = false;
-                    }
+            // Update Buff Timers
+            Object.keys(activeBuffs).forEach(k => {
+                if (activeBuffs[k].active) {
+                    activeBuffs[k].timer--;
+                    if (activeBuffs[k].timer <= 0) activeBuffs[k].active = false;
                 }
             });
-
             updateUIBuffs();
 
-            // Kalkulasi Kecepatan (Kecepatan berlipat ganda jika DASH aktif)
-            let speedMultiplier = activeBuffs.dash.active ? 2.5 : 1.0;
-            
-            if (distance >= 30000) {
-                currentSpeed = 15 * speedMultiplier;
+            // Handle Crouch Status
+            if (keys.down && player.isGrounded) {
+                player.isCrouching = true;
+                player.height = player.crouchHeight;
             } else {
-                currentSpeed = (baseSpeed + (distance / 3500)) * speedMultiplier;
+                player.isCrouching = false;
+                player.height = player.normalHeight;
             }
 
-            distance += Math.round(currentSpeed / 2);
+            // Movement Input Horizontal
+            let speedMult = activeBuffs.dash.active ? 2.2 : 1.0;
+            let currentSpeed = player.speed * speedMult;
 
-            // Fisika Karakter
+            player.vx = 0;
+            if (keys.right) {
+                player.vx = currentSpeed;
+                player.facingRight = true;
+            }
+            if (keys.left) {
+                player.vx = -currentSpeed;
+                player.facingRight = false;
+            }
+
+            // Menerapkan Posisi X
+            player.x += player.vx;
+            if (player.x < 20) player.x = 20;
+            if (player.x > canvas.width - 100) player.x = canvas.width - 100;
+
+            // Update Jarak Tempuh jika bergerak ke kanan
+            if (keys.right || activeBuffs.dash.active) {
+                distance += Math.round(currentSpeed);
+            }
+
+            // Movement Input Vertikal & Fisika
             if (activeBuffs.fly.active) {
-                // Fisika Melayang
-                player.dy += 0.25; // Gravitasi lebih ringan
-                player.y += player.dy;
-
-                // Batas Ketinggian Terbang
+                player.vy += 0.25;
+                player.y += player.vy;
                 if (player.y < 50) player.y = 50;
                 if (player.y + player.height >= groundY) {
                     player.y = groundY - player.height;
-                    player.dy = 0;
-                    player.isGrounded = true;
+                    player.vy = 0; player.isGrounded = true;
                 } else {
                     player.isGrounded = false;
                 }
             } else {
-                // Fisika Normal
                 const grav = activeBuffs.jump.active ? player.gravity * 0.75 : player.gravity;
-                player.dy += grav;
-                player.y += player.dy;
-
+                player.vy += grav;
+                player.y += player.vy;
                 if (player.y + player.height >= groundY) {
                     player.y = groundY - player.height;
-                    player.dy = 0;
-                    player.isGrounded = true;
+                    player.vy = 0; player.isGrounded = true;
                 }
             }
 
-            if (player.isGrounded && animTimer % 6 === 0) {
+            if (player.isGrounded && player.vx !== 0 && animTimer % 6 === 0) {
                 player.runFrame = (player.runFrame + 1) % 4;
             }
 
-            // Parallax Latar Belakang
-            clouds.forEach(cloud => {
-                cloud.x -= cloud.speed + (currentSpeed * 0.05);
-                if (cloud.x + cloud.size * 3 < 0) {
-                    cloud.x = canvas.width + cloud.size * 3;
-                    cloud.y = Math.random() * (canvas.height * 0.4);
-                }
+            // Laju Rintangan Bergeser
+            let worldSpeed = 3 + (distance / 4000);
+            if (activeBuffs.dash.active) worldSpeed *= 2.5;
+
+            // Parallax
+            clouds.forEach(c => {
+                c.x -= c.speed + (worldSpeed * 0.05);
+                if (c.x + c.size * 3 < 0) c.x = canvas.width + c.size * 3;
             });
 
-            mountains.forEach(mountain => {
-                mountain.x -= currentSpeed * mountain.speedFactor;
-                if (mountain.x + mountain.width < 0) {
-                    mountain.x = canvas.width;
-                }
-            });
-
-            // Spawn Lucky Block (Setiap ~300-500 frame)
+            // Spawn Lucky Blocks
             luckyBlockTimer++;
-            if (luckyBlockTimer > 320 + Math.random() * 200) {
+            if (luckyBlockTimer > 300 + Math.random() * 200) {
                 generateLuckyBlock();
                 luckyBlockTimer = 0;
             }
 
-            // Update Lucky Blocks
             for (let i = luckyBlocks.length - 1; i >= 0; i--) {
                 const lb = luckyBlocks[i];
-                lb.x -= currentSpeed;
-
+                lb.x -= worldSpeed;
                 if (checkCollision(player, lb)) {
                     triggerRandomBuff();
                     luckyBlocks.splice(i, 1);
                     continue;
                 }
-
-                if (lb.x + lb.width < 0) {
-                    luckyBlocks.splice(i, 1);
-                }
+                if (lb.x + lb.width < 0) luckyBlocks.splice(i, 1);
             }
 
             // Spawn Rintangan
             spawnTimer++;
-            const isEclipse = distance >= 30000;
-            const minInterval = isEclipse ? 50 : Math.max(65, 120 - Math.floor(distance / 400));
-            const randomVar = Math.random() * 30;
-
-            if (spawnTimer > minInterval + randomVar) {
+            const minInterval = Math.max(60, 110 - Math.floor(distance / 500));
+            if (spawnTimer > minInterval + Math.random() * 30) {
                 generateObstacle();
                 spawnTimer = 0;
             }
 
-            // Update Rintangan & Tabrakan
             for (let i = obstacles.length - 1; i >= 0; i--) {
                 const obs = obstacles[i];
-                obs.x -= currentSpeed;
+                obs.x -= worldSpeed;
 
                 if (checkCollision(player, obs)) {
-                    // Jika DASH aktif, menerobos dan hancurkan rintangan!
                     if (activeBuffs.dash.active) {
                         obstacles.splice(i, 1);
                         continue;
@@ -639,10 +685,7 @@
                         triggerGameOver();
                     }
                 }
-
-                if (obs.x + obs.width < 0) {
-                    obstacles.splice(i, 1);
-                }
+                if (obs.x + obs.width < 0) obstacles.splice(i, 1);
             }
 
             // UI
@@ -652,175 +695,118 @@
             statusText.innerText = `Waktu: ${skyInfo.label}`;
         }
 
-        // Gambar Lucky Blocks (?)
         function drawLuckyBlocks() {
             luckyBlocks.forEach(lb => {
                 ctx.save();
-                
-                // Animasi Berdenyut / Melayang Sedikit
                 const floatY = Math.sin(animTimer * 0.1) * 4;
                 const drawY = lb.y + floatY;
-
-                // Kotak Kuning Emas Glow
-                ctx.shadowBlur = 12;
-                ctx.shadowColor = '#f1c40f';
+                ctx.shadowBlur = 12; ctx.shadowColor = '#f1c40f';
                 ctx.fillStyle = '#f1c40f';
                 ctx.fillRect(lb.x, drawY, lb.width, lb.height);
-
-                ctx.lineWidth = 3;
-                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 3; ctx.strokeStyle = '#ffffff';
                 ctx.strokeRect(lb.x, drawY, lb.width, lb.height);
-
-                // Tanda Tanya '?'
                 ctx.fillStyle = '#2c3e50';
                 ctx.font = 'bold 22px sans-serif';
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
+                ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
                 ctx.fillText('?', lb.x + lb.width / 2, drawY + lb.height / 2 + 1);
-
                 ctx.restore();
             });
         }
 
-        // Gambar Karakter
         function drawPlayer() {
-            const x = player.x;
-            const y = player.y;
-
             ctx.save();
+            ctx.translate(player.x + player.width / 2, player.y + player.height / 2);
+            if (!player.facingRight) ctx.scale(-1, 1);
 
-            // AURA BUFF ACTIVE
+            const drawX = -player.width / 2;
+            const drawY = -player.height / 2;
+
+            // Aura Buff
             if (activeBuffs.dash.active) {
-                // Dash Trail (Ekor Kecepatan)
                 ctx.fillStyle = 'rgba(0, 210, 211, 0.4)';
-                ctx.fillRect(x - 30, y, player.width, player.height);
-                ctx.fillRect(x - 15, y + 5, player.width, player.height - 10);
-
-                ctx.shadowBlur = 20;
-                ctx.shadowColor = '#00d2d3';
+                ctx.fillRect(drawX - 25, drawY, player.width, player.height);
+                ctx.shadowBlur = 20; ctx.shadowColor = '#00d2d3';
             } else if (activeBuffs.fly.active) {
-                ctx.shadowBlur = 20;
-                ctx.shadowColor = '#feca57';
-
-                // Gambar Sayap Energi
+                ctx.shadowBlur = 20; ctx.shadowColor = '#feca57';
                 ctx.fillStyle = 'rgba(254, 202, 87, 0.8)';
                 ctx.beginPath();
-                ctx.moveTo(x + 8, y + 20);
-                ctx.lineTo(x - 20, y + (animTimer % 10 < 5 ? 5 : 25));
-                ctx.lineTo(x + 8, y + 30);
+                ctx.moveTo(drawX + 8, drawY + 15);
+                ctx.lineTo(drawX - 20, drawY + (animTimer % 10 < 5 ? 5 : 25));
+                ctx.lineTo(drawX + 8, drawY + 25);
                 ctx.fill();
             } else if (activeBuffs.jump.active) {
-                ctx.shadowBlur = 15;
-                ctx.shadowColor = '#1dd1a1';
+                ctx.shadowBlur = 15; ctx.shadowColor = '#1dd1a1';
             }
 
-            // Kepala
-            ctx.fillStyle = '#ff4757';
-            ctx.beginPath();
-            ctx.arc(x + 16, y + 10, 10, 0, Math.PI * 2);
-            ctx.fill();
-
-            // Mata
-            ctx.fillStyle = '#ffffff';
-            ctx.beginPath();
-            ctx.arc(x + 20, y + 8, 3, 0, Math.PI * 2);
-            ctx.fill();
-
-            // Badan
-            ctx.fillStyle = activeBuffs.dash.active ? '#00d2d3' : '#2e86de';
-            ctx.fillRect(x + 8, y + 20, 16, 18);
-
-            // Kaki & Tangan
-            ctx.strokeStyle = '#222';
-            ctx.lineWidth = 4;
-            ctx.lineCap = 'round';
-
-            if (!player.isGrounded) {
+            if (player.isCrouching) {
+                // Gambar Karakter Menunduk
+                ctx.fillStyle = '#ff4757';
                 ctx.beginPath();
-                ctx.moveTo(x + 12, y + 38); ctx.lineTo(x + 4, y + 46);
-                ctx.moveTo(x + 20, y + 38); ctx.lineTo(x + 26, y + 50);
-                ctx.moveTo(x + 10, y + 24); ctx.lineTo(x + 2, y + 16);
-                ctx.stroke();
+                ctx.arc(drawX + 22, drawY + 10, 8, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = '#2e86de';
+                ctx.fillRect(drawX + 4, drawY + 12, 20, 14);
             } else {
-                const legCycles = [
-                    { l1: -8, r1: 8 },
-                    { l1: 0, r1: 0 },
-                    { l1: 8, r1: -8 },
-                    { l1: 0, r1: 0 }
-                ];
-                const c = legCycles[player.runFrame];
-
+                // Gambar Karakter Normal
+                ctx.fillStyle = '#ff4757';
                 ctx.beginPath();
-                ctx.moveTo(x + 12, y + 38);
-                ctx.lineTo(x + 12 + c.l1, y + 52);
-                ctx.moveTo(x + 20, y + 38);
-                ctx.lineTo(x + 20 + c.r1, y + 52);
-                ctx.moveTo(x + 16, y + 24);
-                ctx.lineTo(x + 16 + c.r1, y + 32);
-                ctx.stroke();
+                ctx.arc(drawX + 16, drawY + 10, 10, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.arc(drawX + 20, drawY + 8, 3, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = activeBuffs.dash.active ? '#00d2d3' : '#2e86de';
+                ctx.fillRect(drawX + 8, drawY + 20, 16, 18);
+
+                ctx.strokeStyle = '#222'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+                if (!player.isGrounded) {
+                    ctx.beginPath();
+                    ctx.moveTo(drawX + 12, drawY + 38); ctx.lineTo(drawX + 4, drawY + 46);
+                    ctx.moveTo(drawX + 20, drawY + 38); ctx.lineTo(drawX + 26, drawY + 50);
+                    ctx.stroke();
+                } else {
+                    const legCycles = [{ l1: -8, r1: 8 }, { l1: 0, r1: 0 }, { l1: 8, r1: -8 }, { l1: 0, r1: 0 }];
+                    const c = legCycles[player.runFrame];
+                    ctx.beginPath();
+                    ctx.moveTo(drawX + 12, drawY + 38); ctx.lineTo(drawX + 12 + c.l1, drawY + 52);
+                    ctx.moveTo(drawX + 20, drawY + 38); ctx.lineTo(drawX + 20 + c.r1, drawY + 52);
+                    ctx.stroke();
+                }
             }
 
             ctx.restore();
         }
 
-        // Gambar Rintangan
         function drawObstacles() {
             obstacles.forEach(obs => {
                 ctx.save();
-                ctx.lineWidth = 3;
-                ctx.strokeStyle = '#000000';
+                ctx.lineWidth = 3; ctx.strokeStyle = '#000000';
 
                 if (obs.type === 'cactus') {
                     ctx.fillStyle = '#00ff66';
                     ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
                     ctx.strokeRect(obs.x, obs.y, obs.width, obs.height);
-
-                    ctx.fillStyle = '#00cc52';
-                    ctx.fillRect(obs.x - 5, obs.y + 12, 5, 8);
-                    ctx.strokeRect(obs.x - 5, obs.y + 12, 5, 8);
-                    ctx.fillRect(obs.x + obs.width, obs.y + 20, 5, 8);
-                    ctx.strokeRect(obs.x + obs.width, obs.y + 20, 5, 8);
-
                 } else if (obs.type === 'box') {
                     ctx.fillStyle = '#ffb142';
                     ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
                     ctx.strokeRect(obs.x, obs.y, obs.width, obs.height);
-
-                    ctx.beginPath();
-                    ctx.moveTo(obs.x + 4, obs.y + 4);
-                    ctx.lineTo(obs.x + obs.width - 4, obs.y + obs.height - 4);
-                    ctx.moveTo(obs.x + obs.width - 4, obs.y + 4);
-                    ctx.lineTo(obs.x + 4, obs.y + obs.height - 4);
-                    ctx.stroke();
-
                 } else if (obs.type === 'bird') {
                     ctx.fillStyle = '#ffda79';
                     ctx.beginPath();
                     ctx.ellipse(obs.x + 20, obs.y + 13, 18, 10, 0, 0, Math.PI * 2);
-                    ctx.fill();
-                    ctx.stroke();
-
-                    const wingY = (animTimer % 10 < 5) ? -10 : 8;
-                    ctx.fillStyle = '#ffb142';
-                    ctx.beginPath();
-                    ctx.moveTo(obs.x + 15, obs.y + 12);
-                    ctx.lineTo(obs.x + 5, obs.y + 12 + wingY);
-                    ctx.lineTo(obs.x + 25, obs.y + 12);
-                    ctx.closePath();
-                    ctx.fill();
-                    ctx.stroke();
-
+                    ctx.fill(); ctx.stroke();
                 } else if (obs.type === 'spike') {
                     ctx.fillStyle = '#ff4d4d';
                     ctx.beginPath();
                     ctx.moveTo(obs.x, obs.y + obs.height);
                     ctx.lineTo(obs.x + obs.width / 2, obs.y);
                     ctx.lineTo(obs.x + obs.width, obs.y + obs.height);
-                    ctx.closePath();
-                    ctx.fill();
-                    ctx.stroke();
+                    ctx.closePath(); ctx.fill(); ctx.stroke();
                 }
-
                 ctx.restore();
             });
         }
@@ -828,77 +814,28 @@
         function draw() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // Matahari / Bulan
-            const sunX = canvas.width - Math.min(100, canvas.width * 0.1);
-            const sunY = 80;
-
-            if (distance >= 30000) {
-                ctx.beginPath();
-                ctx.arc(sunX, sunY, 40, 0, Math.PI * 2);
-                ctx.fillStyle = '#ff3300';
-                ctx.shadowBlur = 30;
-                ctx.shadowColor = '#ff3300';
-                ctx.fill();
-                ctx.shadowBlur = 0;
-
-                ctx.beginPath();
-                ctx.arc(sunX - 10, sunY - 5, 35, 0, Math.PI * 2);
-                ctx.fillStyle = getComputedStyle(canvas).backgroundColor;
-                ctx.fill();
-            } else {
-                ctx.beginPath();
-                ctx.arc(sunX, sunY, 35, 0, Math.PI * 2);
-                const sunColor = distance > 8000 ? '#e67e22' : '#f1c40f';
-                ctx.fillStyle = sunColor;
-                ctx.shadowBlur = distance > 8000 ? 25 : 15;
-                ctx.shadowColor = distance > 8000 ? '#d35400' : '#f39c12';
-                ctx.fill();
-                ctx.shadowBlur = 0;
-            }
-
-            // Awan
-            ctx.fillStyle = distance > 15000 ? 'rgba(200, 200, 200, 0.8)' : 'rgba(255, 255, 255, 0.8)';
-            clouds.forEach(cloud => {
-                ctx.beginPath();
-                ctx.arc(cloud.x, cloud.y, cloud.size, 0, Math.PI * 2);
-                ctx.arc(cloud.x + cloud.size * 0.6, cloud.y - cloud.size * 0.4, cloud.size * 0.8, 0, Math.PI * 2);
-                ctx.arc(cloud.x + cloud.size * 1.2, cloud.y, cloud.size * 0.7, 0, Math.PI * 2);
-                ctx.fill();
-            });
-
-            // Gunung
-            mountains.forEach(mtn => {
-                ctx.fillStyle = distance > 18000 ? '#111827' : mtn.color;
-                ctx.beginPath();
-                ctx.moveTo(mtn.x, groundY - mtn.yOffset);
-                ctx.lineTo(mtn.x + mtn.width / 2, groundY - mtn.height - mtn.yOffset);
-                ctx.lineTo(mtn.x + mtn.width, groundY - mtn.yOffset);
-                ctx.closePath();
-                ctx.fill();
+            // Awan & Gunung
+            clouds.forEach(c => {
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                ctx.beginPath(); ctx.arc(c.x, c.y, c.size, 0, Math.PI * 2); ctx.fill();
             });
 
             // Tanah
             ctx.fillStyle = '#2d3436';
             ctx.fillRect(0, groundY, canvas.width, canvas.height - groundY);
-            
-            ctx.strokeStyle = '#000';
-            ctx.lineWidth = 4;
-            ctx.beginPath();
-            ctx.moveTo(0, groundY);
-            ctx.lineTo(canvas.width, groundY);
-            ctx.stroke();
+            ctx.strokeStyle = '#000'; ctx.lineWidth = 4;
+            ctx.beginPath(); ctx.moveTo(0, groundY); ctx.lineTo(canvas.width, groundY); ctx.stroke();
 
-            // Render Elemen Utama
+            // Render Elemen
             drawLuckyBlocks();
             drawPlayer();
             drawObstacles();
 
-            // Teks Awal
             if (!gameStarted && !isGameOver) {
                 ctx.fillStyle = 'rgba(0,0,0,0.75)';
-                ctx.font = 'bold 24px sans-serif';
+                ctx.font = 'bold 22px sans-serif';
                 ctx.textAlign = 'center';
-                ctx.fillText('Ketuk Layar atau Spasi untuk Mulai', canvas.width / 2, canvas.height / 2 - 20);
+                ctx.fillText('Gunakan Analog / WASD / Panah untuk Bergerak', canvas.width / 2, canvas.height / 2 - 20);
             }
         }
 
@@ -918,26 +855,20 @@
         function resetGame() {
             initAudio();
             distance = 0;
-            currentSpeed = baseSpeed;
             obstacles = [];
             luckyBlocks = [];
             spawnTimer = 0;
             luckyBlockTimer = 0;
 
-            // Reset Buffs
             Object.keys(activeBuffs).forEach(k => {
                 activeBuffs[k].active = false;
                 activeBuffs[k].timer = 0;
             });
 
+            player.x = 100;
             player.y = groundY - player.height;
-            player.dy = 0;
+            player.vy = 0;
             player.isGrounded = true;
-            
-            canvas.style.backgroundColor = `rgb(${skyColors[0].color.join(',')})`;
-            scoreText.innerText = `Jarak: 0 m`;
-            statusText.innerText = `Waktu: Siang Hari`;
-            initBackground();
 
             isGameOver = false;
             gameStarted = true;
