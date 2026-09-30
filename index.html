@@ -3,9 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Jump Ball Game - Enhanced</title>
+    <title>Jump Runner Game</title>
     <style>
-        /* Reset gaya dasar */
         * {
             margin: 0;
             padding: 0;
@@ -21,16 +20,14 @@
             touch-action: none;
         }
 
-        /* Kanvas Full Screen */
         canvas {
             display: block;
             width: 100vw;
             height: 100vh;
-            background-color: #87CEEB; /* Warna langit siang awal */
+            background-color: #87CEEB;
             transition: background-color 0.5s ease;
         }
 
-        /* UI Overlay */
         #ui-overlay {
             position: absolute;
             top: 20px;
@@ -46,7 +43,6 @@
             z-index: 10;
         }
 
-        /* Game Over Screen */
         #game-over-screen {
             position: absolute;
             top: 0;
@@ -82,7 +78,6 @@
             margin-bottom: 25px;
         }
 
-        /* Tombol Restart */
         #restart-btn {
             padding: 12px 30px;
             font-size: 18px;
@@ -125,7 +120,67 @@
         const gameOverScreen = document.getElementById('game-over-screen');
         const finalScoreText = document.getElementById('final-score');
 
-        // Parameter Utama Game
+        // --- SISTEM SUARA (WEB AUDIO API) ---
+        let audioCtx;
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        // Suara Lompat (Juicy Pop Synth Pitch-Glide)
+        function playJumpSound() {
+            if (!audioCtx) return;
+            const now = audioCtx.currentTime;
+
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+
+            osc.type = 'sine';
+            
+            // Sweep frekuensi cepat dari rendah ke tinggi (pitch bend "boing")
+            osc.frequency.setValueAtTime(220, now);
+            osc.frequency.exponentialRampToValueAtTime(880, now + 0.12);
+
+            // Envelope Volume (Punchy attack + decay)
+            gain.gain.setValueAtTime(0.3, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            osc.start(now);
+            osc.stop(now + 0.15);
+        }
+
+        // Suara Game Over (Sad Arpeggio 8-bit Retro)
+        function playGameOverSound() {
+            if (!audioCtx) return;
+            const now = audioCtx.currentTime;
+
+            const notes = [400, 350, 300, 220, 150]; // Nada menurun
+            notes.forEach((freq, i) => {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(freq, now + i * 0.08);
+
+                gain.gain.setValueAtTime(0.15, now + i * 0.08);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + i * 0.08 + 0.1);
+
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                osc.start(now + i * 0.08);
+                osc.stop(now + i * 0.08 + 0.12);
+            });
+        }
+
+        // Parameter Utama
         let distance = 0;
         let baseSpeed = 6;
         let currentSpeed = baseSpeed;
@@ -133,27 +188,28 @@
         let gameStarted = false;
         let animationFrameId;
         let groundY;
+        let animTimer = 0;
 
-        // Karakter Bola
-        const ball = {
+        // Karakter Berlari (Runner)
+        const player = {
             x: 50,
             y: 0,
-            radius: 20,
-            color: '#ff4757',
+            width: 32,
+            height: 52,
             dy: 0,
             gravity: 0.6,
-            jumpForce: -12,
-            isGrounded: true
+            jumpForce: -12.5,
+            isGrounded: true,
+            runFrame: 0
         };
 
         let obstacles = [];
         let spawnTimer = 0;
 
-        // Elemen Latar Belakang (Awan & Gunung)
+        // Latar Belakang
         let clouds = [];
         let mountains = [];
 
-        // Tema Waktu Langit
         const skyColors = [
             { limit: 0, color: [135, 206, 235], label: "Siang Hari" },
             { limit: 10000, color: [243, 156, 18], label: "Sore Hari" },
@@ -161,12 +217,10 @@
             { limit: 30000, color: [20, 10, 35], label: "Gerhana Bulan" }
         ];
 
-        // Inisialisasi Latar Belakang
         function initBackground() {
             clouds = [];
             mountains = [];
             
-            // Buat awan awal
             for (let i = 0; i < 5; i++) {
                 clouds.push({
                     x: Math.random() * canvas.width,
@@ -176,59 +230,56 @@
                 });
             }
 
-            // Buat gunung awal (lapisan jauh dan dekat)
-            // Lapisan jauh (lebih gelap, lebih lambat)
             for (let i = 0; i < 3; i++) {
                 mountains.push({
                     x: i * (canvas.width / 2) + Math.random() * 100,
                     width: canvas.width * 0.8,
                     height: canvas.height * 0.5,
-                    color: '#4a5568', // Slate gray
+                    color: '#4a5568',
                     speedFactor: 0.1,
-                    yOffset: 50 // Sedikit di atas tanah
+                    yOffset: 50
                 });
             }
-            // Lapisan dekat (lebih terang, lebih cepat)
             for (let i = 0; i < 2; i++) {
                 mountains.push({
-                    x: i * (canvas.width) + Math.random() * 200,
+                    x: i * canvas.width + Math.random() * 200,
                     width: canvas.width * 1.2,
                     height: canvas.height * 0.3,
-                    color: '#718096', // Light slate gray
+                    color: '#718096',
                     speedFactor: 0.3,
-                    yOffset: 0 // Pas di tanah
+                    yOffset: 0
                 });
             }
         }
 
-        // Responsivitas Kanvas
         function resizeCanvas() {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
             groundY = canvas.height - 120;
             
-            // Posisikan bola ke tanah
             if (!gameStarted || isGameOver) {
-                ball.x = Math.min(100, canvas.width * 0.15);
-                ball.y = groundY - ball.radius;
+                player.x = Math.min(100, canvas.width * 0.15);
+                player.y = groundY - player.height;
             }
 
-            initBackground(); // Re-inisialisasi latar saat resize
+            initBackground();
         }
         window.addEventListener('resize', resizeCanvas);
         resizeCanvas();
 
-        // Kontrol Lompat & Mulai Game
         function handleInput(e) {
             if (e && e.target && e.target.tagName === 'BUTTON') return; 
+
+            initAudio(); // Aktifkan Web Audio API saat ada interaksi user
 
             if (!gameStarted && !isGameOver) {
                 gameStarted = true;
             }
 
-            if (ball.isGrounded && !isGameOver && gameStarted) {
-                ball.dy = ball.jumpForce;
-                ball.isGrounded = false;
+            if (player.isGrounded && !isGameOver && gameStarted) {
+                player.dy = player.jumpForce;
+                player.isGrounded = false;
+                playJumpSound();
             }
         }
 
@@ -243,7 +294,6 @@
 
         window.addEventListener('mousedown', handleInput);
 
-        // Hitung Warna Langit berdasarkan Jarak
         function getSkyColor(dist) {
             if (dist >= 30000) return { color: skyColors[3].color, label: skyColors[3].label };
 
@@ -266,67 +316,83 @@
             return { color: [r, g, b], label: startNode.label };
         }
 
-        // Generate Rintangan Segitiga
+        // GENERATE RINTANGAN BERAGAM
         function generateObstacle() {
-            const isEclipse = distance >= 30000;
-            let width, height;
+            const types = ['cactus', 'box', 'bird', 'spike'];
+            const chosenType = types[Math.floor(Math.random() * types.length)];
 
-            if (isEclipse) {
-                width = Math.random() * 30 + 20;
-                height = Math.random() * 50 + 30;
-            } else {
-                const sizes = [
-                    { w: 25, h: 30 },
-                    { w: 35, h: 45 },
-                    { w: 45, h: 60 }
-                ];
-                const selected = sizes[Math.floor(Math.random() * sizes.length)];
-                width = selected.w;
-                height = selected.h;
+            let obstacle = {
+                x: canvas.width + 50,
+                type: chosenType,
+                width: 30,
+                height: 40,
+                y: groundY - 40
+            };
+
+            if (chosenType === 'cactus') {
+                obstacle.width = Math.random() * 15 + 25;
+                obstacle.height = Math.random() * 20 + 40;
+                obstacle.y = groundY - obstacle.height;
+            } else if (chosenType === 'box') {
+                obstacle.width = 35;
+                obstacle.height = 35;
+                obstacle.y = groundY - 35;
+            } else if (chosenType === 'bird') {
+                obstacle.width = 40;
+                obstacle.height = 25;
+                // Burung melayang di udara (butuh lompatan tepat)
+                obstacle.y = groundY - (Math.random() > 0.5 ? 65 : 45);
+            } else if (chosenType === 'spike') {
+                obstacle.width = 45;
+                obstacle.height = 25;
+                obstacle.y = groundY - 25;
             }
 
-            obstacles.push({
-                x: canvas.width + 50,
-                width: width,
-                height: height
-            });
+            obstacles.push(obstacle);
         }
 
-        // Cek Tabrakan (Lingkaran vs Segitiga sederhana)
-        function checkCollision(ball, tri) {
-            const closestX = Math.max(tri.x, Math.min(ball.x, tri.x + tri.width));
-            const closestY = Math.max(groundY - tri.height, Math.min(ball.y, groundY));
-            const distX = ball.x - closestX;
-            const distY = ball.y - closestY;
-            return (distX * distX) + (distY * distY) < (ball.radius * ball.radius);
+        // Cek Deteksi Tabrakan AABB (Axis-Aligned Bounding Box)
+        function checkCollision(p, obs) {
+            // Beri sedikit margin/padding agar hitbox terasa adil bagi pemain
+            const padding = 6;
+            return (
+                p.x + padding < obs.x + obs.width &&
+                p.x + p.width - padding > obs.x &&
+                p.y + padding < obs.y + obs.height &&
+                p.y + p.height - padding > obs.y
+            );
         }
 
-        // Update Logika Game
         function update() {
             if (!gameStarted || isGameOver) return;
 
             distance += Math.round(currentSpeed / 2);
+            animTimer++;
 
-            // Tingkatkan Kecepatan
             if (distance >= 30000) {
                 currentSpeed = 15;
             } else {
                 currentSpeed = baseSpeed + (distance / 3500);
             }
 
-            // Fisika Bola
-            ball.dy += ball.gravity;
-            ball.y += ball.dy;
+            // Fisika Karakter
+            player.dy += player.gravity;
+            player.y += player.dy;
 
-            if (ball.y + ball.radius >= groundY) {
-                ball.y = groundY - ball.radius;
-                ball.dy = 0;
-                ball.isGrounded = true;
+            if (player.y + player.height >= groundY) {
+                player.y = groundY - player.height;
+                player.dy = 0;
+                player.isGrounded = true;
             }
 
-            // Gerakkan Latar Belakang (Parallax)
+            // Frame animasi lari (berganti tiap beberapa tick)
+            if (player.isGrounded && animTimer % 6 === 0) {
+                player.runFrame = (player.runFrame + 1) % 4;
+            }
+
+            // Parallax Latar Belakang
             clouds.forEach(cloud => {
-                cloud.x -= cloud.speed + (currentSpeed * 0.05); // Sedikit terpengaruh kec. game
+                cloud.x -= cloud.speed + (currentSpeed * 0.05);
                 if (cloud.x + cloud.size * 3 < 0) {
                     cloud.x = canvas.width + cloud.size * 3;
                     cloud.y = Math.random() * (canvas.height * 0.4);
@@ -343,20 +409,20 @@
             // Spawn Rintangan
             spawnTimer++;
             const isEclipse = distance >= 30000;
-            const minInterval = isEclipse ? 45 : Math.max(60, 120 - Math.floor(distance / 400));
-            const randomVar = isEclipse ? Math.random() * 40 : Math.random() * 30;
+            const minInterval = isEclipse ? 45 : Math.max(55, 110 - Math.floor(distance / 400));
+            const randomVar = isEclipse ? Math.random() * 35 : Math.random() * 30;
 
             if (spawnTimer > minInterval + randomVar) {
                 generateObstacle();
                 spawnTimer = 0;
             }
 
-            // Update Rintangan & Cek Tabrakan
+            // Update Rintangan & Tabrakan
             for (let i = obstacles.length - 1; i >= 0; i--) {
                 const obs = obstacles[i];
                 obs.x -= currentSpeed;
 
-                if (checkCollision(ball, obs)) {
+                if (checkCollision(player, obs)) {
                     triggerGameOver();
                 }
 
@@ -365,23 +431,133 @@
                 }
             }
 
-            // Update UI
+            // UI
             scoreText.innerText = `Jarak: ${distance} m`;
             const skyInfo = getSkyColor(distance);
             canvas.style.backgroundColor = `rgb(${skyInfo.color[0]}, ${skyInfo.color[1]}, ${skyInfo.color[2]})`;
             statusText.innerText = `Waktu: ${skyInfo.label}`;
         }
 
-        // Gambar Elemen Visual
+        // Gambar Karakter Berlari (Vector Art Sederhana)
+        function drawPlayer() {
+            const x = player.x;
+            const y = player.y;
+
+            ctx.save();
+
+            // Kepala
+            ctx.fillStyle = '#ff4757';
+            ctx.beginPath();
+            ctx.arc(x + 16, y + 10, 10, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Mata
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(x + 20, y + 8, 3, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Badan
+            ctx.fillStyle = '#2e86de';
+            ctx.beginPath();
+            ctx.roundRect(x + 8, y + 20, 16, 18, 4);
+            ctx.fill();
+
+            // Kaki & Tangan saat Melompat vs Berlari
+            ctx.strokeStyle = '#222';
+            ctx.lineWidth = 4;
+            ctx.lineCap = 'round';
+
+            if (!player.isGrounded) {
+                // Pose Melompat
+                ctx.beginPath();
+                ctx.moveTo(x + 12, y + 38); ctx.lineTo(x + 4, y + 46); // Kaki kiri ditekuk
+                ctx.moveTo(x + 20, y + 38); ctx.lineTo(x + 26, y + 50); // Kaki kanan lurus
+                ctx.moveTo(x + 10, y + 24); ctx.lineTo(x + 2, y + 16);  // Tangan naik
+                ctx.stroke();
+            } else {
+                // Pose Berlari (4 Frame Leg Cycle)
+                const legCycles = [
+                    { l1: -8, l2: 8, r1: 8, r2: -8 },
+                    { l1: 0, l2: 4, r1: 0, r2: -4 },
+                    { l1: 8, l2: -8, r1: -8, r2: 8 },
+                    { l1: 0, l2: -4, r1: 0, r2: 4 }
+                ];
+                const c = legCycles[player.runFrame];
+
+                ctx.beginPath();
+                // Kaki Kiri
+                ctx.moveTo(x + 12, y + 38);
+                ctx.lineTo(x + 12 + c.l1, y + 52);
+                // Kaki Kanan
+                ctx.moveTo(x + 20, y + 38);
+                ctx.lineTo(x + 20 + c.r1, y + 52);
+                // Tangan
+                ctx.moveTo(x + 16, y + 24);
+                ctx.lineTo(x + 16 + c.r1, y + 32);
+                ctx.stroke();
+            }
+
+            ctx.restore();
+        }
+
+        // Gambar Rintangan Beragam
+        function drawObstacles() {
+            obstacles.forEach(obs => {
+                ctx.save();
+                if (obs.type === 'cactus') {
+                    // Kaktus
+                    ctx.fillStyle = '#2ed573';
+                    ctx.beginPath();
+                    ctx.roundRect(obs.x, obs.y, obs.width, obs.height, 5);
+                    ctx.fill();
+                    // Duri/Cabang
+                    ctx.fillStyle = '#26af5f';
+                    ctx.fillRect(obs.x - 4, obs.y + 10, 6, 4);
+                    ctx.fillRect(obs.x + obs.width - 2, obs.y + 18, 6, 4);
+                } else if (obs.type === 'box') {
+                    // Kotak Kayu
+                    ctx.fillStyle = '#e1b12c';
+                    ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
+                    ctx.strokeStyle = '#c23616';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(obs.x + 2, obs.y + 2, obs.width - 4, obs.height - 4);
+                } else if (obs.type === 'bird') {
+                    // Burung (Dengan Kepakan Sayap)
+                    ctx.fillStyle = '#10ac84';
+                    ctx.beginPath();
+                    ctx.ellipse(obs.x + 20, obs.y + 12, 18, 10, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                    // Sayap
+                    const wingY = (animTimer % 10 < 5) ? -8 : 8;
+                    ctx.fillStyle = '#1dd1a1';
+                    ctx.beginPath();
+                    ctx.moveTo(obs.x + 15, obs.y + 10);
+                    ctx.lineTo(obs.x + 5, obs.y + 10 + wingY);
+                    ctx.lineTo(obs.x + 22, obs.y + 10);
+                    ctx.fill();
+                } else if (obs.type === 'spike') {
+                    // Duri Besi
+                    ctx.fillStyle = '#718096';
+                    ctx.beginPath();
+                    ctx.moveTo(obs.x, obs.y + obs.height);
+                    ctx.lineTo(obs.x + obs.width / 2, obs.y);
+                    ctx.lineTo(obs.x + obs.width, obs.y + obs.height);
+                    ctx.closePath();
+                    ctx.fill();
+                }
+                ctx.restore();
+            });
+        }
+
         function draw() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // Matahari atau Bulan (Responsif)
+            // Matahari / Bulan
             const sunX = canvas.width - Math.min(100, canvas.width * 0.1);
             const sunY = 80;
 
             if (distance >= 30000) {
-                // Bulan Gerhana
                 ctx.beginPath();
                 ctx.arc(sunX, sunY, 40, 0, Math.PI * 2);
                 ctx.fillStyle = '#ff3300';
@@ -392,13 +568,12 @@
 
                 ctx.beginPath();
                 ctx.arc(sunX - 10, sunY - 5, 35, 0, Math.PI * 2);
-                ctx.fillStyle = getComputedStyle(canvas).backgroundColor; // Warna sama dg langit
+                ctx.fillStyle = getComputedStyle(canvas).backgroundColor;
                 ctx.fill();
             } else {
-                // Matahari
                 ctx.beginPath();
                 ctx.arc(sunX, sunY, 35, 0, Math.PI * 2);
-                const sunColor = distance > 8000 ? '#e67e22' : '#f1c40f'; // Lebih oranye saat sore
+                const sunColor = distance > 8000 ? '#e67e22' : '#f1c40f';
                 ctx.fillStyle = sunColor;
                 ctx.shadowBlur = distance > 8000 ? 25 : 15;
                 ctx.shadowColor = distance > 8000 ? '#d35400' : '#f39c12';
@@ -406,7 +581,7 @@
                 ctx.shadowBlur = 0;
             }
 
-            // Gambar Awan
+            // Awan
             ctx.fillStyle = distance > 15000 ? 'rgba(200, 200, 200, 0.8)' : 'rgba(255, 255, 255, 0.8)';
             clouds.forEach(cloud => {
                 ctx.beginPath();
@@ -416,13 +591,9 @@
                 ctx.fill();
             });
 
-            // Gambar Gunung (Latar Belakang)
+            // Gunung
             mountains.forEach(mtn => {
-                ctx.fillStyle = mtn.color;
-                // Gelapkan gunung saat malam/gerhana
-                if (distance > 18000) {
-                     ctx.fillStyle = '#1a202c'; // Sangat gelap
-                }
+                ctx.fillStyle = distance > 18000 ? '#1a202c' : mtn.color;
                 ctx.beginPath();
                 ctx.moveTo(mtn.x, groundY - mtn.yOffset);
                 ctx.lineTo(mtn.x + mtn.width / 2, groundY - mtn.height - mtn.yOffset);
@@ -431,7 +602,7 @@
                 ctx.fill();
             });
 
-            // Gambar Tanah
+            // Tanah
             ctx.fillStyle = '#2d3436';
             ctx.fillRect(0, groundY, canvas.width, canvas.height - groundY);
             
@@ -442,24 +613,11 @@
             ctx.lineTo(canvas.width, groundY);
             ctx.stroke();
 
-            // Gambar Bola
-            ctx.beginPath();
-            ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
-            ctx.fillStyle = ball.color;
-            ctx.fill();
+            // Karakter & Rintangan
+            drawPlayer();
+            drawObstacles();
 
-            // Gambar Rintangan
-            ctx.fillStyle = '#d63031';
-            obstacles.forEach(obs => {
-                ctx.beginPath();
-                ctx.moveTo(obs.x, groundY);
-                ctx.lineTo(obs.x + (obs.width / 2), groundY - obs.height);
-                ctx.lineTo(obs.x + obs.width, groundY);
-                ctx.closePath();
-                ctx.fill();
-            });
-
-            // Tulisan Standby
+            // Standby Text
             if (!gameStarted && !isGameOver) {
                 ctx.fillStyle = 'rgba(0,0,0,0.7)';
                 ctx.font = 'bold 24px sans-serif';
@@ -468,42 +626,39 @@
             }
         }
 
-        // Game Loop Utama
         function gameLoop() {
             update();
             draw();
             animationFrameId = requestAnimationFrame(gameLoop);
         }
 
-        // Trigger Game Over
         function triggerGameOver() {
             isGameOver = true;
+            playGameOverSound();
             finalScoreText.innerText = `Jarak Tempuh: ${distance} m`;
             gameOverScreen.classList.add('active');
         }
 
-        // Reset Game
         function resetGame() {
+            initAudio();
             distance = 0;
             currentSpeed = baseSpeed;
             obstacles = [];
             spawnTimer = 0;
-            ball.y = groundY - ball.radius;
-            ball.dy = 0;
-            ball.isGrounded = true;
+            player.y = groundY - player.height;
+            player.dy = 0;
+            player.isGrounded = true;
             
-            // Reset state latar belakang
             canvas.style.backgroundColor = `rgb(${skyColors[0].color.join(',')})`;
             scoreText.innerText = `Jarak: 0 m`;
             statusText.innerText = `Waktu: Siang Hari`;
             initBackground();
 
             isGameOver = false;
-            gameStarted = true; // Langsung jalan sehabis tombol ditekan
+            gameStarted = true;
             gameOverScreen.classList.remove('active');
         }
 
-        // Mulai Loop
         requestAnimationFrame(gameLoop);
     </script>
 </body>
