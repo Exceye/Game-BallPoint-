@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Jump Runner Game</title>
+    <title>Jump Runner Game - Fixed</title>
     <style>
         * {
             margin: 0;
@@ -38,7 +38,7 @@
             font-size: 18px;
             font-weight: bold;
             color: #fff;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.7);
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
             pointer-events: none;
             z-index: 10;
         }
@@ -49,7 +49,7 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.75);
+            background: rgba(0, 0, 0, 0.8);
             display: flex;
             flex-direction: column;
             justify-content: center;
@@ -131,7 +131,6 @@
             }
         }
 
-        // Suara Lompat (Juicy Pop Synth Pitch-Glide)
         function playJumpSound() {
             if (!audioCtx) return;
             const now = audioCtx.currentTime;
@@ -140,12 +139,9 @@
             const gain = audioCtx.createGain();
 
             osc.type = 'sine';
-            
-            // Sweep frekuensi cepat dari rendah ke tinggi (pitch bend "boing")
             osc.frequency.setValueAtTime(220, now);
             osc.frequency.exponentialRampToValueAtTime(880, now + 0.12);
 
-            // Envelope Volume (Punchy attack + decay)
             gain.gain.setValueAtTime(0.3, now);
             gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
 
@@ -156,12 +152,11 @@
             osc.stop(now + 0.15);
         }
 
-        // Suara Game Over (Sad Arpeggio 8-bit Retro)
         function playGameOverSound() {
             if (!audioCtx) return;
             const now = audioCtx.currentTime;
 
-            const notes = [400, 350, 300, 220, 150]; // Nada menurun
+            const notes = [400, 350, 300, 220, 150];
             notes.forEach((freq, i) => {
                 const osc = audioCtx.createOscillator();
                 const gain = audioCtx.createGain();
@@ -190,15 +185,15 @@
         let groundY;
         let animTimer = 0;
 
-        // Karakter Berlari (Runner)
+        // Karakter Berlari
         const player = {
             x: 50,
             y: 0,
             width: 32,
             height: 52,
             dy: 0,
-            gravity: 0.6,
-            jumpForce: -12.5,
+            gravity: 0.65,
+            jumpForce: -13,
             isGrounded: true,
             runFrame: 0
         };
@@ -234,19 +229,19 @@
                 mountains.push({
                     x: i * (canvas.width / 2) + Math.random() * 100,
                     width: canvas.width * 0.8,
-                    height: canvas.height * 0.5,
-                    color: '#4a5568',
+                    height: canvas.height * 0.45,
+                    color: '#34495e',
                     speedFactor: 0.1,
-                    yOffset: 50
+                    yOffset: 40
                 });
             }
             for (let i = 0; i < 2; i++) {
                 mountains.push({
                     x: i * canvas.width + Math.random() * 200,
-                    width: canvas.width * 1.2,
-                    height: canvas.height * 0.3,
-                    color: '#718096',
-                    speedFactor: 0.3,
+                    width: canvas.width * 1.1,
+                    height: canvas.height * 0.28,
+                    color: '#2c3e50',
+                    speedFactor: 0.25,
                     yOffset: 0
                 });
             }
@@ -270,7 +265,7 @@
         function handleInput(e) {
             if (e && e.target && e.target.tagName === 'BUTTON') return; 
 
-            initAudio(); // Aktifkan Web Audio API saat ada interaksi user
+            initAudio();
 
             if (!gameStarted && !isGameOver) {
                 gameStarted = true;
@@ -316,7 +311,7 @@
             return { color: [r, g, b], label: startNode.label };
         }
 
-        // GENERATE RINTANGAN BERAGAM
+        // GENERATE RINTANGAN DENGAN POSISI AMAN
         function generateObstacle() {
             const types = ['cactus', 'box', 'bird', 'spike'];
             const chosenType = types[Math.floor(Math.random() * types.length)];
@@ -330,31 +325,30 @@
             };
 
             if (chosenType === 'cactus') {
-                obstacle.width = Math.random() * 15 + 25;
-                obstacle.height = Math.random() * 20 + 40;
+                obstacle.width = 30;
+                obstacle.height = Math.random() * 15 + 40; // 40-55px
                 obstacle.y = groundY - obstacle.height;
             } else if (chosenType === 'box') {
-                obstacle.width = 35;
-                obstacle.height = 35;
-                obstacle.y = groundY - 35;
+                obstacle.width = 36;
+                obstacle.height = 36;
+                obstacle.y = groundY - 36;
             } else if (chosenType === 'bird') {
-                obstacle.width = 40;
-                obstacle.height = 25;
-                // Burung melayang di udara (butuh lompatan tepat)
-                obstacle.y = groundY - (Math.random() > 0.5 ? 65 : 45);
+                obstacle.width = 42;
+                obstacle.height = 26;
+                // Burung terbang TINGGI (Pemain bisa berlari di bawahnya tanpa kena hit)
+                obstacle.y = groundY - 85; 
             } else if (chosenType === 'spike') {
-                obstacle.width = 45;
-                obstacle.height = 25;
-                obstacle.y = groundY - 25;
+                obstacle.width = 40;
+                obstacle.height = 28;
+                obstacle.y = groundY - 28;
             }
 
             obstacles.push(obstacle);
         }
 
-        // Cek Deteksi Tabrakan AABB (Axis-Aligned Bounding Box)
+        // Cek Deteksi Tabrakan
         function checkCollision(p, obs) {
-            // Beri sedikit margin/padding agar hitbox terasa adil bagi pemain
-            const padding = 6;
+            const padding = 5; // Toleransi hitbox agar adil
             return (
                 p.x + padding < obs.x + obs.width &&
                 p.x + p.width - padding > obs.x &&
@@ -385,7 +379,6 @@
                 player.isGrounded = true;
             }
 
-            // Frame animasi lari (berganti tiap beberapa tick)
             if (player.isGrounded && animTimer % 6 === 0) {
                 player.runFrame = (player.runFrame + 1) % 4;
             }
@@ -409,8 +402,8 @@
             // Spawn Rintangan
             spawnTimer++;
             const isEclipse = distance >= 30000;
-            const minInterval = isEclipse ? 45 : Math.max(55, 110 - Math.floor(distance / 400));
-            const randomVar = isEclipse ? Math.random() * 35 : Math.random() * 30;
+            const minInterval = isEclipse ? 50 : Math.max(65, 120 - Math.floor(distance / 400));
+            const randomVar = isEclipse ? Math.random() * 30 : Math.random() * 30;
 
             if (spawnTimer > minInterval + randomVar) {
                 generateObstacle();
@@ -438,7 +431,7 @@
             statusText.innerText = `Waktu: ${skyInfo.label}`;
         }
 
-        // Gambar Karakter Berlari (Vector Art Sederhana)
+        // Gambar Karakter
         function drawPlayer() {
             const x = player.x;
             const y = player.y;
@@ -459,40 +452,33 @@
 
             // Badan
             ctx.fillStyle = '#2e86de';
-            ctx.beginPath();
-            ctx.roundRect(x + 8, y + 20, 16, 18, 4);
-            ctx.fill();
+            ctx.fillRect(x + 8, y + 20, 16, 18);
 
-            // Kaki & Tangan saat Melompat vs Berlari
+            // Kaki & Tangan
             ctx.strokeStyle = '#222';
             ctx.lineWidth = 4;
             ctx.lineCap = 'round';
 
             if (!player.isGrounded) {
-                // Pose Melompat
                 ctx.beginPath();
-                ctx.moveTo(x + 12, y + 38); ctx.lineTo(x + 4, y + 46); // Kaki kiri ditekuk
-                ctx.moveTo(x + 20, y + 38); ctx.lineTo(x + 26, y + 50); // Kaki kanan lurus
-                ctx.moveTo(x + 10, y + 24); ctx.lineTo(x + 2, y + 16);  // Tangan naik
+                ctx.moveTo(x + 12, y + 38); ctx.lineTo(x + 4, y + 46);
+                ctx.moveTo(x + 20, y + 38); ctx.lineTo(x + 26, y + 50);
+                ctx.moveTo(x + 10, y + 24); ctx.lineTo(x + 2, y + 16);
                 ctx.stroke();
             } else {
-                // Pose Berlari (4 Frame Leg Cycle)
                 const legCycles = [
-                    { l1: -8, l2: 8, r1: 8, r2: -8 },
-                    { l1: 0, l2: 4, r1: 0, r2: -4 },
-                    { l1: 8, l2: -8, r1: -8, r2: 8 },
-                    { l1: 0, l2: -4, r1: 0, r2: 4 }
+                    { l1: -8, r1: 8 },
+                    { l1: 0, r1: 0 },
+                    { l1: 8, r1: -8 },
+                    { l1: 0, r1: 0 }
                 ];
                 const c = legCycles[player.runFrame];
 
                 ctx.beginPath();
-                // Kaki Kiri
                 ctx.moveTo(x + 12, y + 38);
                 ctx.lineTo(x + 12 + c.l1, y + 52);
-                // Kaki Kanan
                 ctx.moveTo(x + 20, y + 38);
                 ctx.lineTo(x + 20 + c.r1, y + 52);
-                // Tangan
                 ctx.moveTo(x + 16, y + 24);
                 ctx.lineTo(x + 16 + c.r1, y + 32);
                 ctx.stroke();
@@ -501,51 +487,73 @@
             ctx.restore();
         }
 
-        // Gambar Rintangan Beragam
+        // Gambar Rintangan DENGAN KONTRAS TINGGI + OUTLINE
         function drawObstacles() {
             obstacles.forEach(obs => {
                 ctx.save();
+
+                // Style Outline Umum agar SELALU KELIHATAN di latar gelap/terang
+                ctx.lineWidth = 3;
+                ctx.strokeStyle = '#000000';
+
                 if (obs.type === 'cactus') {
-                    // Kaktus
-                    ctx.fillStyle = '#2ed573';
-                    ctx.beginPath();
-                    ctx.roundRect(obs.x, obs.y, obs.width, obs.height, 5);
-                    ctx.fill();
-                    // Duri/Cabang
-                    ctx.fillStyle = '#26af5f';
-                    ctx.fillRect(obs.x - 4, obs.y + 10, 6, 4);
-                    ctx.fillRect(obs.x + obs.width - 2, obs.y + 18, 6, 4);
-                } else if (obs.type === 'box') {
-                    // Kotak Kayu
-                    ctx.fillStyle = '#e1b12c';
+                    // Kaktus Hijau Neon
+                    ctx.fillStyle = '#00ff66';
                     ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
-                    ctx.strokeStyle = '#c23616';
-                    ctx.lineWidth = 2;
-                    ctx.strokeRect(obs.x + 2, obs.y + 2, obs.width - 4, obs.height - 4);
+                    ctx.strokeRect(obs.x, obs.y, obs.width, obs.height);
+
+                    // Cabang Kaktus
+                    ctx.fillStyle = '#00cc52';
+                    ctx.fillRect(obs.x - 5, obs.y + 12, 5, 8);
+                    ctx.strokeRect(obs.x - 5, obs.y + 12, 5, 8);
+                    ctx.fillRect(obs.x + obs.width, obs.y + 20, 5, 8);
+                    ctx.strokeRect(obs.x + obs.width, obs.y + 20, 5, 8);
+
+                } else if (obs.type === 'box') {
+                    // Kotak Kayu Kuning Terang
+                    ctx.fillStyle = '#ffb142';
+                    ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
+                    ctx.strokeRect(obs.x, obs.y, obs.width, obs.height);
+
+                    // Tanda Silang Kotak
+                    ctx.beginPath();
+                    ctx.moveTo(obs.x + 4, obs.y + 4);
+                    ctx.lineTo(obs.x + obs.width - 4, obs.y + obs.height - 4);
+                    ctx.moveTo(obs.x + obs.width - 4, obs.y + 4);
+                    ctx.lineTo(obs.x + 4, obs.y + obs.height - 4);
+                    ctx.stroke();
+
                 } else if (obs.type === 'bird') {
-                    // Burung (Dengan Kepakan Sayap)
-                    ctx.fillStyle = '#10ac84';
+                    // Burung Merah/Kuning Terang
+                    ctx.fillStyle = '#ffda79';
                     ctx.beginPath();
-                    ctx.ellipse(obs.x + 20, obs.y + 12, 18, 10, 0, 0, Math.PI * 2);
+                    ctx.ellipse(obs.x + 20, obs.y + 13, 18, 10, 0, 0, Math.PI * 2);
                     ctx.fill();
+                    ctx.stroke();
+
                     // Sayap
-                    const wingY = (animTimer % 10 < 5) ? -8 : 8;
-                    ctx.fillStyle = '#1dd1a1';
+                    const wingY = (animTimer % 10 < 5) ? -10 : 8;
+                    ctx.fillStyle = '#ffb142';
                     ctx.beginPath();
-                    ctx.moveTo(obs.x + 15, obs.y + 10);
-                    ctx.lineTo(obs.x + 5, obs.y + 10 + wingY);
-                    ctx.lineTo(obs.x + 22, obs.y + 10);
+                    ctx.moveTo(obs.x + 15, obs.y + 12);
+                    ctx.lineTo(obs.x + 5, obs.y + 12 + wingY);
+                    ctx.lineTo(obs.x + 25, obs.y + 12);
+                    ctx.closePath();
                     ctx.fill();
+                    ctx.stroke();
+
                 } else if (obs.type === 'spike') {
-                    // Duri Besi
-                    ctx.fillStyle = '#718096';
+                    // Duri Merah Menyala
+                    ctx.fillStyle = '#ff4d4d';
                     ctx.beginPath();
                     ctx.moveTo(obs.x, obs.y + obs.height);
                     ctx.lineTo(obs.x + obs.width / 2, obs.y);
                     ctx.lineTo(obs.x + obs.width, obs.y + obs.height);
                     ctx.closePath();
                     ctx.fill();
+                    ctx.stroke();
                 }
+
                 ctx.restore();
             });
         }
@@ -593,7 +601,7 @@
 
             // Gunung
             mountains.forEach(mtn => {
-                ctx.fillStyle = distance > 18000 ? '#1a202c' : mtn.color;
+                ctx.fillStyle = distance > 18000 ? '#111827' : mtn.color;
                 ctx.beginPath();
                 ctx.moveTo(mtn.x, groundY - mtn.yOffset);
                 ctx.lineTo(mtn.x + mtn.width / 2, groundY - mtn.height - mtn.yOffset);
@@ -606,8 +614,8 @@
             ctx.fillStyle = '#2d3436';
             ctx.fillRect(0, groundY, canvas.width, canvas.height - groundY);
             
-            ctx.strokeStyle = '#636e72';
-            ctx.lineWidth = 5;
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 4;
             ctx.beginPath();
             ctx.moveTo(0, groundY);
             ctx.lineTo(canvas.width, groundY);
@@ -619,7 +627,7 @@
 
             // Standby Text
             if (!gameStarted && !isGameOver) {
-                ctx.fillStyle = 'rgba(0,0,0,0.7)';
+                ctx.fillStyle = 'rgba(0,0,0,0.75)';
                 ctx.font = 'bold 24px sans-serif';
                 ctx.textAlign = 'center';
                 ctx.fillText('Ketuk Layar atau Spasi untuk Mulai', canvas.width / 2, canvas.height / 2 - 20);
